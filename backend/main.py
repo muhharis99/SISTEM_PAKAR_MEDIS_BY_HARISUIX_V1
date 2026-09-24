@@ -265,7 +265,11 @@ async def analyze_multimodal(
     clinical_features = extract_clinical_features(f"{anamnese} {riwayat_sekarang} {periksa} {alergi}")
     vision = analyze_with_vision(raw, image.content_type or "", clinical_context=f"Anamnesa: {anamnese}\nPemeriksaan: {periksa}")
     try:
+        try:
         clinical_result = retriever.analyze(clinical, top_n=min(max(top_n, 1), 10))
+    except ValueError as exc:
+        # Foto tetap dapat dianalisis meski anamnesa/periksa kosong.
+        clinical_result = {"query": "", "results": [], "similar_cases": [], "skipped": True, "reason": str(exc)}
     except ValueError as exc:
         # Foto dapat dianalisis meskipun operator belum mengisi anamnesa/periksa.
         clinical_result = {"query": "", "results": [], "similar_cases": [], "skipped": True, "reason": str(exc)}
