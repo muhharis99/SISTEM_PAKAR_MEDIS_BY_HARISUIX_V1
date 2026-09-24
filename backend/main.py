@@ -146,6 +146,7 @@ class AnalyzeRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     recommended: list[str] = []
     corrected_diagnosis: str
+    case_uid: str | None = None
     note: str = ""
     anamnese_length: int = 0
     periksa_length: int = 0
@@ -639,17 +640,39 @@ def dictionary(user=Depends(get_current_user)) -> dict[str, Any]:
 
 @app.post("/api/feedback")
 def feedback(body: FeedbackRequest, user=Depends(require_roles("dokter", "admin"))) -> dict[str, Any]:
+    case_uid = body.case_uid
     with SessionLocal() as s:
         s.add(Feedback(
             user_id=user["id"],
-            input_summary=json.dumps({"anamnese_length": body.anamnese_length, "periksa_length": body.periksa_length}),
+            input_summary=json.dumps({
+                "anamnese_length": body.anamnese_length,
+                "periksa_length": body.periksa_length,
+                "case_uid": case_uid,
+            }),
             recommended=json.dumps(body.recommended, ensure_ascii=False),
             corrected_diagnosis=body.corrected_diagnosis[:500],
             note=body.note[:1000],
         ))
+        if case_uid:
+            row = s.scalar(select(CaseRecord).where(CaseRecord.case_uid == case_uid, CaseRecord.user_id == user["id"]))
+            if row:
+                result = _safe_json(row.result_json)
+                result["doctor_correction"] = {
+                    "corrected_diagnosis": body.corrected_diagnosis[:500],
+                    "note": body.note[:1000],
+                    "reviewed_by": user["username"],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                row.result_json = json.dumps(result, ensure_ascii=False, default=str)
+                row.status = "corrected"
+                row.updated_at = datetime.now(timezone.utc)
         s.commit()
-    audit(user["id"], "feedback_koreksi", {"recommended_count": len(body.recommended), "corrected": body.corrected_diagnosis[:120]})
-    return {"ok": True}
+    audit(user["id"], "feedback_koreksi", {
+        "recommended_count": len(body.recommended),
+        "corrected": body.corrected_diagnosis[:120],
+        "case_uid": case_uid,
+    })
+    return {"ok": True, "case_uid": case_uid}
 
 
 @app.get("/api/audit")
