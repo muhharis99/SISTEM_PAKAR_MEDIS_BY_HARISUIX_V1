@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CDSS Mata — Multimodal Clinical Decision Support</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="loginView" class="center-screen">
+  <div class="login-card">
+    <div class="brand-mark">◉</div>
+    <div class="eyebrow">MULTIMODAL OPHTHALMIC CDSS</div>
+    <h1>CDSS Mata</h1>
+    <p class="muted">Analisa klinis + foto + histori rekam medis anonim.</p>
+    <form id="loginForm">
+      <label>Username<input id="username" autocomplete="username" value="dokter"></label>
+      <label>Password<input id="password" type="password" autocomplete="current-password" value="dokter123"></label>
+      <button class="btn primary full" type="submit">Masuk ke Sistem</button>
+    </form>
+    <div id="loginError" class="error"></div>
+    <div class="login-hint">Demo: admin/admin123 · dokter/dokter123 · perawat/perawat123</div>
+  </div>
+</div>
+
+<div id="appView" class="hidden">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark small">◉</span><div><strong>CDSS Mata</strong><small>Multimodal Decision Support</small></div></div>
+    <nav>
+      <button data-page="analisa" class="nav-btn active">◈ Analisa Multimodal</button>
+      <button data-page="dashboard" class="nav-btn">▦ Dashboard</button>
+      <button data-page="riwayat" class="nav-btn">◫ Riwayat Kasus</button>
+      <button data-page="kamus" class="nav-btn">⌕ Kamus Diagnosa</button>
+      <button data-page="evaluasi" class="nav-btn">◔ Evaluasi Model</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div id="userBadge" class="user-badge"></div>
+      <button id="logoutBtn" class="nav-btn danger">Keluar</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div><div class="eyebrow">OPHTHALMIC CLINICAL DECISION SUPPORT</div><h2 id="pageTitle">Analisa Multimodal</h2></div>
+      <div class="top-status"><span class="dot"></span><span>Sistem aktif</span><span id="visionStatus" class="mini-pill">Vision: cek</span></div>
+    </header>
+
+    <section id="page-analisa" class="page">
+      <div class="warning"><strong>Decision-support:</strong> hasil multimodal adalah kombinasi evidence klinis, visual, dan histori. Skor fusion bukan probabilitas penyakit terkalibrasi dan tidak menggantikan pemeriksaan dokter.</div>
+
+      <div class="workspace-grid">
+        <div class="card clinical-panel">
+          <div class="card-head"><div><h3>1 · Clinical Input</h3><p>Data yang diketahui sebelum model melakukan retrieval.</p></div><span class="step-badge">TEXT</span></div>
+          <form id="analysisForm">
+            <div class="form-grid">
+              <label>Usia (tahun)<input id="age" type="number" min="0" max="120" placeholder="55"></label>
+              <label>Jenis kelamin<select id="sex"><option value="">Tidak diketahui</option><option>Laki-laki</option><option>Perempuan</option></select></label>
+            </div>
+            <label>Alergi / komorbid<input id="alergi" placeholder="DM, hipertensi, alergi obat, dll."></label>
+            <label>Anamnesa<textarea id="anamnese" rows="5" placeholder="Keluhan utama, onset, durasi, laterality, gejala penyerta..."></textarea></label>
+            <label>Riwayat sekarang<textarea id="riwayat" rows="4" placeholder="Riwayat penyakit sekarang / kontrol..."></textarea></label>
+            <label>Pemeriksaan<textarea id="periksa" rows="8" placeholder="VOD/VOS, TIO, CDR, konjungtiva, kornea, pupil, fundus, dll."></textarea></label>
+            <div id="clinicalFeatureBox" class="feature-box hidden"></div>
+            <div class="form-actions"><button class="btn primary" type="submit">Analisa Teks</button><button class="btn" id="clearBtn" type="button">Reset Kasus</button></div>
+          </form>
+        </div>
+
+        <div class="card image-panel">
+          <div class="card-head"><div><h3>2 · Vision Input</h3><p>Gunakan foto sebagai evidence visual tambahan.</p></div><span class="step-badge">IMAGE</span></div>
+          <input id="eyeImage" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <div id="dropZone" class="drop-zone">
+            <div class="drop-icon">◌</div><strong>Pilih / seret foto mata</strong>
+            <span class="small-note">JPG, PNG, WEBP · maksimal 10 MB</span>
+            <button id="chooseImageBtn" class="btn" type="button">Pilih Foto</button>
+          </div>
+          <div id="imagePreviewWrap" class="image-preview-wrap hidden">
+            <img id="imagePreview" alt="Pratinjau foto mata">
+            <div class="image-actions"><span id="imageFileName" class="small-note"></span><button id="removeImageBtn" class="btn">Hapus</button></div>
+          </div>
+          <div class="vision-actions">
+            <button id="analyzeImageBtn" class="btn" type="button">Quality Check</button>
+            <button id="multimodalBtn" class="btn primary" type="button">✦ Analisa Multimodal</button>
+          </div>
+          <div id="imageAnalysisResult" class="image-result hidden"></div>
+          <div class="small-note vision-help">Untuk analisa visual AI lokal, pasang Ollama + model vision. Bila tidak tersedia, sistem tetap menjalankan quality gate dan retrieval klinis.</div>
+        </div>
+      </div>
+
+      <div class="card fusion-card">
+        <div class="card-head"><div><h3>3 · Multimodal Evidence Board</h3><p>Hasil dari beberapa sumber evidence, ditampilkan terpisah agar dapat diaudit.</p></div><span id="fusionState" class="chip">Belum dianalisa</span></div>
+        <div id="fusionEmpty" class="empty-state"><div class="empty-icon">✦</div><strong>Belum ada hasil multimodal</strong><span>Isi data klinis dan upload foto, lalu klik <b>Analisa Multimodal</b>.</span></div>
+        <div id="fusionContent" class="hidden">
+          <div class="three-col">
+            <div class="evidence-card"><div class="section-label">CLINICAL EVIDENCE</div><div id="clinicalEvidence"></div></div>
+            <div class="evidence-card"><div class="section-label">VISUAL EVIDENCE</div><div id="visualEvidence"></div></div>
+            <div class="evidence-card"><div class="section-label">FUSION RESULT</div><div id="fusionResults"></div></div>
+          </div>
+          <div class="fusion-note"><b>Bobot saat ini:</b> clinical 70% + visual 30%. Ini adalah heuristic fusion untuk membantu review, bukan model probabilistik klinis.</div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="similarCard">
+        <div class="card-head"><div><h3>Kasus Historis Serupa</h3><p>Contoh anonim yang mendukung retrieval klinis.</p></div></div>
+        <div id="similarList" class="case-list"></div>
+      </div>
+    </section>
+
+    <section id="page-dashboard" class="page hidden">
+      <div class="stats-grid" id="statsCards"></div>
+      <div class="grid-2 dashboard-grid">
+        <div class="card"><div class="card-head"><div><h3>Diagnosa Terbanyak</h3><p>Distribusi pada data terindeks.</p></div></div><div id="topDiag"></div></div>
+        <div class="card"><div class="card-head"><div><h3>Kelompok Usia</h3><p>Distribusi kasus.</p></div></div><div id="ageGroups"></div></div>
+      </div>
+      <div class="card"><div class="card-head"><div><h3>Tren Bulanan</h3><p>Jumlah kasus berdasarkan bulan kunjungan.</p></div></div><div id="monthlyChart" class="bars"></div></div>
+    </section>
+
+    <section id="page-riwayat" class="page hidden">
+      <div class="card"><div class="card-head"><div><h3>Riwayat Kasus</h3><p>Data anonim tanpa nama, nomor rekam medis, atau tanggal lahir.</p></div></div>
+        <div class="filter-grid"><input id="histQ" placeholder="Cari teks / diagnosa..."><input id="histDiagnosis" placeholder="Filter diagnosa..."><select id="histAge"><option value="">Semua umur</option><option>Neonatus</option><option>Anak</option><option>Dewasa</option><option>Geriatri</option><option>Tidak diketahui</option></select><input id="histYear" type="number" placeholder="Tahun"><button id="histBtn" class="btn primary">Cari</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Umur</th><th>Poli</th><th>Anamnesa</th><th>Pemeriksaan</th><th>Diagnosa</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="page-kamus" class="page hidden">
+      <div class="card"><div class="card-head"><div><h3>Kamus Diagnosa</h3><p>Label diagnosis dari dataset historis.</p></div></div>
+        <div class="filter-grid"><input id="dictQ" placeholder="Cari kode / nama diagnosa..."><button id="dictBtn" class="btn primary">Filter</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Kode</th><th>Diagnosa</th><th>Jenis</th><th>Kasus</th></tr></thead><tbody id="dictBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="page-evaluasi" class="page hidden">
+      <div class="card"><div class="card-head"><div><h3>Evaluasi Model</h3><p>Evaluasi retrospektif retrieval terhadap diagnosa aktual.</p></div></div><div id="evalContent" class="eval-box"></div></div>
+      <div class="card"><div class="card-head"><div><h3>Catatan validasi</h3><p>Evaluasi retrieval tidak sama dengan validasi model diagnosis foto.</p></div></div><div class="warning compact">Untuk deployment klinis, diperlukan external test set, validasi foto dengan label dokter, calibration, analisa subgroup, dan pilot prospektif.</div></div>
+    </section>
+
+    <footer>CDSS Mata · Multimodal prototype · Keputusan klinis tetap pada tenaga medis berwenang.</footer>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

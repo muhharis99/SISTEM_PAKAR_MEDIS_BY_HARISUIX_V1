@@ -1,0 +1,11 @@
+{
+  "cases": 106726,
+  "features": 40000,
+  "matrix_shape": [
+    106726,
+    40000
+  ],
+  "vectorizer": "TF-IDF word unigrams+bigrams",
+  "max_features": 40000,
+  "min_df": 2
+}

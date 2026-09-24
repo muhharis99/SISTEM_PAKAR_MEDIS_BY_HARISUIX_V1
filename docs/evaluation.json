@@ -1,0 +1,11 @@
+{
+  "metrics": {
+    "recall_at_3": 0.834,
+    "recall_at_5": 0.872,
+    "mrr": 0.7712,
+    "test_cases": 500,
+    "train_cases": 86091,
+    "split": "GroupShuffleSplit 80/20 by pseudonymous no_reg, sample 500 test cases",
+    "note": "Retrospective retrieval metric only; does not constitute clinical validation or calibrated diagnostic probability."
+  }
+}
