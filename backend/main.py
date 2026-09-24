@@ -8,22 +8,26 @@ import os
 import subprocess
 import sys
 import time
+import uuid
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 
-from backend.db import AuditLog, Feedback, SessionLocal, User, init_db, verify_password
+from backend.db import AuditLog, CaseRecord, Feedback, SessionLocal, User, init_db, verify_password
 from ml.retrieval import DiagnosisRetriever
 from ml.image_analysis import analyze_image_bytes
 from ml.clinical_extractor import extract_clinical_features
 from ml.vision_provider import analyze_with_vision, VISION_ENABLED, VISION_MODEL, OLLAMA_URL
 from ml.multimodal import fuse_results
+from ml.clinical_checklist import build_clinical_checklist
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_DIR = Path(os.getenv("INDEX_DIR", ROOT / "data/index"))
@@ -33,6 +37,84 @@ SESSION_COOKIE = "cdss_session"
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+APP_MODES = {"multimodal", "photo", "clinical"}
+
+def _vision_runtime_status() -> dict[str, Any]:
+    if not VISION_ENABLED:
+        return {
+            "enabled": False,
+            "reachable": False,
+            "model": VISION_MODEL,
+            "model_available": False,
+            "status": "disabled",
+            "message": "Vision AI dinonaktifkan oleh konfigurasi.",
+        }
+    try:
+        tags_url = OLLAMA_URL.replace("/api/chat", "/api/tags")
+        req = urllib.request.Request(tags_url, method="GET")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        names = [str(x.get("name", "")) for x in (payload.get("models") or [])]
+        available = any(
+            name == VISION_MODEL or name.startswith(VISION_MODEL.split(":")[0] + ":")
+            for name in names
+        )
+        return {
+            "enabled": True,
+            "reachable": True,
+            "model": VISION_MODEL,
+            "model_available": available,
+            "models": names[:30],
+            "status": "ready" if available else "model_missing",
+            "message": "Vision AI siap digunakan." if available else f"Provider aktif tetapi model {VISION_MODEL} belum tersedia.",
+        }
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "reachable": False,
+            "model": VISION_MODEL,
+            "model_available": False,
+            "status": "offline",
+            "message": "Vision provider tidak terhubung.",
+            "error_type": type(exc).__name__,
+        }
+
+def _new_case_uid() -> str:
+    return "CASE-" + datetime.now(timezone.utc).strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:8].upper()
+
+def _save_case(
+    user_id: int,
+    mode: str,
+    title: str,
+    payload: dict[str, Any],
+    result: dict[str, Any],
+    image_sha256: str = "",
+) -> str:
+    uid = _new_case_uid()
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as s:
+        s.add(CaseRecord(
+            case_uid=uid,
+            user_id=user_id,
+            mode=mode,
+            title=(title or "Kasus Baru")[:180],
+            status="review",
+            image_sha256=image_sha256[:64],
+            input_json=json.dumps(payload, ensure_ascii=False, default=str),
+            result_json=json.dumps(result, ensure_ascii=False, default=str),
+            created_at=now,
+            updated_at=now,
+        ))
+        s.commit()
+    return uid
+
+def _safe_json(value: Any) -> dict[str, Any]:
+    try:
+        parsed = json.loads(value or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
 
 app = FastAPI(title="CDSS Mata - Sistem Bantu Analisa Diagnosa", version="1.0.0")
 app.add_middleware(
@@ -140,7 +222,28 @@ def startup() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "index_loaded": retriever is not None, "vision_enabled": VISION_ENABLED, "vision_model": VISION_MODEL, "vision_provider_url": OLLAMA_URL}
+    vision = _vision_runtime_status()
+    return {
+        "ok": True,
+        "index_loaded": retriever is not None,
+        "vision_enabled": VISION_ENABLED,
+        "vision_model": VISION_MODEL,
+        "vision_provider_url": OLLAMA_URL,
+        "vision": vision,
+    }
+
+@app.get("/api/system/status")
+def system_status(user=Depends(get_current_user)) -> dict[str, Any]:
+    return {
+        "app": {"name": "CDSS Mata", "version": "3.0.0"},
+        "index": {
+            "loaded": retriever is not None,
+            "cases": len(retriever.metadata) if retriever else 0,
+            "diagnoses": len(retriever.label_counts) if retriever else 0,
+        },
+        "vision": _vision_runtime_status(),
+        "analysis_modes": sorted(APP_MODES),
+    }
 
 
 @app.post("/api/auth/login")
@@ -176,8 +279,23 @@ def analyze(body: AnalyzeRequest, user=Depends(get_current_user)) -> dict[str, A
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     query_hash = hashlib.sha256(result["query"].encode("utf-8")).hexdigest()[:16]
-    audit(user["id"], "analisa", {"query_hash": query_hash, "result_count": len(result["results"])})
-    result["disclaimer"] = "Hasil ini adalah rekomendasi berbasis kemiripan histori, bukan diagnosis final dan bukan probabilitas klinis terkalibrasi. Keputusan akhir tetap pada tenaga medis berwenang."
+    checklist = build_clinical_checklist(
+        " ".join([body.anamnese, body.riwayat_sekarang, body.periksa, body.alergi]),
+        body.age,
+    )
+    result["clinical_checklist"] = checklist
+    result["evidence_type"] = "historical_text_retrieval"
+    result["score_semantics"] = "relative_support"
+    result["disclaimer"] = "Hasil ini adalah decision-support berbasis kemiripan histori, bukan diagnosis final dan bukan probabilitas klinis terkalibrasi."
+    case_uid = _save_case(
+        user["id"],
+        "clinical",
+        "Analisa Klinis",
+        body.model_dump(),
+        result,
+    )
+    result["case_uid"] = case_uid
+    audit(user["id"], "analisa", {"query_hash": query_hash, "result_count": len(result["results"]), "case_uid": case_uid})
     return result
 
 
@@ -306,16 +424,143 @@ async def analyze_multimodal(
         "clinical_result_count": len(clinical_result.get("results", [])),
         "fused_result_count": len(fused),
     })
-    return {
+    checklist = build_clinical_checklist(
+        " ".join([anamnese, riwayat_sekarang, periksa, alergi]),
+        age,
+    )
+    evidence_completeness = {
+        "clinical_input": has_clinical_input,
+        "image_quality": image_baseline["quality"]["status"],
+        "vision": vision.get("available", False),
+        "visual_retrieval": bool(visual_result.get("results")),
+    }
+    result_payload = {
         "image": image_baseline,
         "clinical_features": clinical_features,
+        "clinical_checklist": checklist,
         "vision": vision,
         "clinical_analysis": clinical_result,
         "visual_retrieval": visual_result,
         "fused_results": fused,
-        "fusion_policy": {"clinical_weight": 0.70, "visual_weight": 0.30, "interpretation": "Skor fusion adalah heuristic antar sumber evidence, bukan probabilitas penyakit terkalibrasi."},
-        "disclaimer": "Analisa multimodal adalah decision-support. Temuan visual belum merupakan diagnosis dan hasil fusion belum tervalidasi klinis. Keputusan akhir tetap pada dokter.",
+        "evidence_completeness": evidence_completeness,
+        "fusion_policy": {
+            "clinical_weight": 0.70,
+            "visual_weight": 0.30,
+            "interpretation": "Skor fusion adalah relative evidence score antar sumber, bukan probabilitas penyakit terkalibrasi.",
+        },
+        "disclaimer": "Analisa multimodal adalah decision-support. Temuan visual belum merupakan diagnosis dan hasil fusion belum tervalidasi klinis.",
     }
+    case_uid = _save_case(
+        user["id"],
+        "multimodal",
+        "Analisa Multimodal",
+        clinical,
+        result_payload,
+        image_baseline["sha256"],
+    )
+    result_payload["case_uid"] = case_uid
+    return result_payload
+
+@app.get("/api/cases")
+def list_cases(limit: int = Query(default=30, ge=1, le=100), user=Depends(get_current_user)) -> dict[str, Any]:
+    with SessionLocal() as s:
+        rows = s.scalars(
+            select(CaseRecord)
+            .where(CaseRecord.user_id == user["id"])
+            .order_by(desc(CaseRecord.updated_at))
+            .limit(limit)
+        ).all()
+        return {
+            "items": [
+                {
+                    "case_uid": r.case_uid,
+                    "title": r.title,
+                    "mode": r.mode,
+                    "status": r.status,
+                    "image_sha256": r.image_sha256,
+                    "created_at": r.created_at.isoformat(),
+                    "updated_at": r.updated_at.isoformat(),
+                }
+                for r in rows
+            ]
+        }
+
+@app.get("/api/cases/{case_uid}")
+def get_case(case_uid: str, user=Depends(get_current_user)) -> dict[str, Any]:
+    with SessionLocal() as s:
+        row = s.scalar(select(CaseRecord).where(CaseRecord.case_uid == case_uid, CaseRecord.user_id == user["id"]))
+        if not row:
+            raise HTTPException(status_code=404, detail="Kasus tidak ditemukan.")
+        return {
+            "case_uid": row.case_uid,
+            "title": row.title,
+            "mode": row.mode,
+            "status": row.status,
+            "input": _safe_json(row.input_json),
+            "result": _safe_json(row.result_json),
+            "image_sha256": row.image_sha256,
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
+        }
+
+@app.post("/api/cases/{case_uid}/status")
+def update_case_status(case_uid: str, status: str = Form(...), user=Depends(get_current_user)) -> dict[str, Any]:
+    allowed = {"review", "reviewed", "corrected", "archived"}
+    if status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Status harus salah satu dari: {', '.join(sorted(allowed))}.")
+    with SessionLocal() as s:
+        row = s.scalar(select(CaseRecord).where(CaseRecord.case_uid == case_uid, CaseRecord.user_id == user["id"]))
+        if not row:
+            raise HTTPException(status_code=404, detail="Kasus tidak ditemukan.")
+        row.status = status
+        row.updated_at = datetime.now(timezone.utc)
+        s.commit()
+    audit(user["id"], "case_status", {"case_uid": case_uid, "status": status})
+    return {"ok": True, "case_uid": case_uid, "status": status}
+
+@app.get("/api/cases/{case_uid}/report", response_class=HTMLResponse)
+def case_report(case_uid: str, user=Depends(get_current_user)) -> HTMLResponse:
+    with SessionLocal() as s:
+        row = s.scalar(select(CaseRecord).where(CaseRecord.case_uid == case_uid, CaseRecord.user_id == user["id"]))
+        if not row:
+            raise HTTPException(status_code=404, detail="Kasus tidak ditemukan.")
+    inp = _safe_json(row.input_json)
+    res = _safe_json(row.result_json)
+    clinical = res.get("clinical_analysis", {}).get("results", [])
+    fused = res.get("fused_results", [])
+    vis = (res.get("vision") or {}).get("analysis") or {}
+    checklist = res.get("clinical_checklist") or {}
+    def esc_html(v: Any) -> str:
+        return (
+            str(v).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;")
+        )
+    clinical_html = "".join(
+        f"<li><b>{esc_html(x.get('name') or x.get('label'))}</b> — relative support {esc_html(x.get('confidence', 0))}% · support {esc_html(x.get('support_cases', 0))} kasus</li>"
+        for x in clinical[:8]
+    ) or "<li>Tidak ada hasil clinical retrieval.</li>"
+    fused_html = "".join(
+        f"<li><b>{esc_html(x.get('name') or x.get('label'))}</b> — fusion {esc_html(x.get('fusion_score', 0))} · {esc_html(x.get('consistency'))}</li>"
+        for x in fused[:8]
+    ) or "<li>Tidak ada hasil fusion.</li>"
+    findings_html = "".join(
+        f"<li>{esc_html(x.get('finding'))} — evidence {esc_html(x.get('evidence'))}</li>"
+        for x in vis.get("visible_findings", [])[:12]
+    ) or "<li>Tidak ada temuan visual terstruktur.</li>"
+    missing_html = "".join(f"<li>{esc_html(x.get('label'))}</li>" for x in checklist.get("missing", [])[:8]) or "<li>Tidak ada.</li>"
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Report {esc_html(row.case_uid)}</title>
+    <style>body{{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;color:#1d2939;line-height:1.5}}h1,h2{{color:#173b73}}.meta{{background:#f3f6fa;padding:15px;border-radius:10px}}.box{{border:1px solid #dbe3ec;border-radius:10px;padding:15px;margin:15px 0}}small{{color:#667085}}@media print{{body{{margin:12mm}}}}</style></head>
+    <body><h1>CDSS Mata — Laporan Evidence</h1>
+    <div class="meta"><b>Case:</b> {esc_html(row.case_uid)}<br><b>Mode:</b> {esc_html(row.mode)}<br><b>Status:</b> {esc_html(row.status)}<br><b>Dibuat:</b> {esc_html(row.created_at.isoformat())}</div>
+    <div class="box"><h2>Input Klinis</h2><b>Anamnesa</b><p>{esc_html(inp.get("anamnese",""))}</p><b>Pemeriksaan</b><p>{esc_html(inp.get("periksa",""))}</p></div>
+    <div class="box"><h2>Clinical Evidence</h2><ul>{clinical_html}</ul></div>
+    <div class="box"><h2>Visual Evidence</h2><p>{esc_html(vis.get("summary",""))}</p><ul>{findings_html}</ul></div>
+    <div class="box"><h2>Fusion Evidence</h2><ul>{fused_html}</ul></div>
+    <div class="box"><h2>Kelengkapan Dokumentasi</h2><p>Score: {esc_html(checklist.get("completeness","-"))}%</p><ul>{missing_html}</ul></div>
+    <p><small>Ini adalah laporan decision-support berbasis evidence dan histori. Bukan diagnosis final dan bukan pengganti pemeriksaan dokter.</small></p>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>"""
+    audit(user["id"], "case_report", {"case_uid": case_uid})
+    return HTMLResponse(html)
 
 @app.get("/api/statistik")
 def statistics(user=Depends(get_current_user)) -> dict[str, Any]:
