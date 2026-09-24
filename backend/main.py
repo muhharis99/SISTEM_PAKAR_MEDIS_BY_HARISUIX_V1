@@ -264,12 +264,32 @@ async def analyze_multimodal(
         raise HTTPException(status_code=422, detail=f"Foto tidak dapat dianalisis: {exc}")
     clinical_features = extract_clinical_features(f"{anamnese} {riwayat_sekarang} {periksa} {alergi}")
     vision = analyze_with_vision(raw, image.content_type or "", clinical_context=f"Anamnesa: {anamnese}\nPemeriksaan: {periksa}")
-    try:
+
+    has_clinical_input = any(
+        str(clinical.get(key) or "").strip()
+        for key in ("anamnese", "riwayat_sekarang", "periksa", "alergi")
+    )
+    if has_clinical_input:
         try:
-        clinical_result = retriever.analyze(clinical, top_n=min(max(top_n, 1), 10))
-    except ValueError as exc:
-        # Foto tetap dapat dianalisis meski anamnesa/periksa kosong.
-        clinical_result = {"query": "", "results": [], "similar_cases": [], "skipped": True, "reason": str(exc)}
+            clinical_result = retriever.analyze(clinical, top_n=min(max(top_n, 1), 10))
+        except ValueError as exc:
+            clinical_result = {
+                "query": "",
+                "results": [],
+                "similar_cases": [],
+                "skipped": True,
+                "reason": str(exc),
+            }
+    else:
+        clinical_result = {
+            "query": "",
+            "results": [],
+            "similar_cases": [],
+            "skipped": True,
+            "reason": "Tidak ada input klinis; analisa visual-only.",
+        }
+
+
     visual_result = {"results": [], "similar_cases": []}
     visual_query = ""
     if vision.get("available"):
