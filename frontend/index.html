@@ -29,7 +29,8 @@
     <nav>
       <button data-page="analisa" class="nav-btn active">◈ Analisa Multimodal</button>
       <button data-page="dashboard" class="nav-btn">▦ Dashboard</button>
-      <button data-page="riwayat" class="nav-btn">◫ Riwayat Kasus</button>
+      <button data-page="riwayat" class="nav-btn">◫ Riwayat Histori</button>
+      <button data-page="kasus" class="nav-btn">▣ Case Workspace</button>
       <button data-page="kamus" class="nav-btn">⌕ Kamus Diagnosa</button>
       <button data-page="evaluasi" class="nav-btn">◔ Evaluasi Model</button>
     </nav>
@@ -99,6 +100,14 @@
         </div>
       </div>
 
+      <div id="caseMetaBar" class="case-meta-bar hidden">
+        <div><div class="section-label">CASE WORKSPACE</div><strong id="caseUid">-</strong><span id="caseStatusText" class="status-badge">review</span></div>
+        <div class="case-actions">
+          <button id="caseReviewBtn" class="btn" type="button">Tandai Ditinjau</button>
+          <button id="caseReportBtn" class="btn" type="button">Cetak Laporan</button>
+        </div>
+      </div>
+
       <div class="card fusion-card">
         <div class="card-head"><div><h3 id="evidenceBoardTitle">3 · Evidence Board</h3><p id="evidenceBoardDescription">Hasil tiap sumber evidence ditampilkan terpisah agar dapat diaudit.</p></div><span id="fusionState" class="chip">Belum dianalisa</span></div>
         <div id="fusionEmpty" class="empty-state"><div class="empty-icon">✦</div><strong id="emptyTitle">Belum ada hasil analisa</strong><span id="emptyDescription">Pilih mode, masukkan evidence yang tersedia, lalu jalankan analisa.</span></div>
@@ -108,7 +117,12 @@
             <div class="evidence-card"><div class="section-label">VISUAL EVIDENCE</div><div id="visualEvidence"></div></div>
             <div class="evidence-card"><div class="section-label">FUSION RESULT</div><div id="fusionResults"></div></div>
           </div>
-          <div class="fusion-note"><b>Bobot saat ini:</b> clinical 70% + visual 30%. Ini adalah heuristic fusion untuk membantu review, bukan model probabilistik klinis.</div>
+          <div class="fusion-note"><b>Bobot saat ini:</b> clinical 70% + visual 30%. Ini adalah heuristic relative evidence score, bukan probabilitas penyakit.</div>
+          <div class="three-col secondary-evidence">
+            <div class="evidence-card"><div class="section-label">DOCUMENTATION CHECKLIST</div><div id="clinicalChecklist"><div class="muted-box">Menunggu analisa.</div></div></div>
+            <div class="evidence-card"><div class="section-label">EVIDENCE QUALITY</div><div id="evidenceQuality"><div class="muted-box">Menunggu analisa.</div></div></div>
+            <div class="evidence-card"><div class="section-label">DOCTOR REVIEW</div><div id="doctorCorrection"><div class="muted-box">Koreksi dokter disimpan sebagai feedback untuk evaluasi sistem.</div></div><div class="review-form hidden" id="reviewForm"><input id="correctedDiagnosis" placeholder="Diagnosis/kesimpulan dokter"><textarea id="reviewNote" rows="3" placeholder="Catatan koreksi / alasan"></textarea><button id="submitCorrectionBtn" class="btn primary" type="button">Simpan Koreksi Dokter</button></div></div>
+          </div>
         </div>
       </div>
 
@@ -120,6 +134,10 @@
 
     <section id="page-dashboard" class="page hidden">
       <div class="stats-grid" id="statsCards"></div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><div><h3>System Health</h3><p>Status index dan Vision AI.</p></div></div><div id="systemHealth"></div></div>
+        <div class="card"><div class="card-head"><div><h3>Workflow</h3><p>Kontrol kualitas evidence sebelum review.</p></div></div><div id="workflowHints"></div></div>
+      </div>
       <div class="grid-2 dashboard-grid">
         <div class="card"><div class="card-head"><div><h3>Diagnosa Terbanyak</h3><p>Distribusi pada data terindeks.</p></div></div><div id="topDiag"></div></div>
         <div class="card"><div class="card-head"><div><h3>Kelompok Usia</h3><p>Distribusi kasus.</p></div></div><div id="ageGroups"></div></div>
@@ -131,6 +149,13 @@
       <div class="card"><div class="card-head"><div><h3>Riwayat Kasus</h3><p>Data anonim tanpa nama, nomor rekam medis, atau tanggal lahir.</p></div></div>
         <div class="filter-grid"><input id="histQ" placeholder="Cari teks / diagnosa..."><input id="histDiagnosis" placeholder="Filter diagnosa..."><select id="histAge"><option value="">Semua umur</option><option>Neonatus</option><option>Anak</option><option>Dewasa</option><option>Geriatri</option><option>Tidak diketahui</option></select><input id="histYear" type="number" placeholder="Tahun"><button id="histBtn" class="btn primary">Cari</button></div>
         <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Umur</th><th>Poli</th><th>Anamnesa</th><th>Pemeriksaan</th><th>Diagnosa</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="page-kasus" class="page hidden">
+      <div class="card">
+        <div class="card-head"><div><h3>Case Workspace</h3><p>Kasus yang pernah dianalisa oleh akun ini. Data identitas pasien tidak disimpan sebagai field khusus.</p></div><button id="refreshCasesBtn" class="btn primary" type="button">Refresh</button></div>
+        <div id="caseList" class="saved-cases"></div>
       </div>
     </section>
 

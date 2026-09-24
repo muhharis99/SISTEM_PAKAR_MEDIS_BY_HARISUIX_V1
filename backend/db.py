@@ -42,6 +42,20 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class CaseRecord(Base):
+    __tablename__ = "case_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_uid: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    mode: Mapped[str] = mapped_column(String(30), default="multimodal")
+    title: Mapped[str] = mapped_column(String(180), default="Kasus Baru")
+    status: Mapped[str] = mapped_column(String(30), default="review")
+    image_sha256: Mapped[str] = mapped_column(String(64), default="")
+    input_json: Mapped[str] = mapped_column(Text, default="{}")
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
 class Feedback(Base):
     __tablename__ = "feedback"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
