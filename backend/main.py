@@ -270,9 +270,6 @@ async def analyze_multimodal(
     except ValueError as exc:
         # Foto tetap dapat dianalisis meski anamnesa/periksa kosong.
         clinical_result = {"query": "", "results": [], "similar_cases": [], "skipped": True, "reason": str(exc)}
-    except ValueError as exc:
-        # Foto dapat dianalisis meskipun operator belum mengisi anamnesa/periksa.
-        clinical_result = {"query": "", "results": [], "similar_cases": [], "skipped": True, "reason": str(exc)}
     visual_result = {"results": [], "similar_cases": []}
     visual_query = ""
     if vision.get("available"):
