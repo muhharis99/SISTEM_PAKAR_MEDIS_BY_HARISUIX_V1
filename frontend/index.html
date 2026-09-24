@@ -46,10 +46,23 @@
     </header>
 
     <section id="page-analisa" class="page">
-      <div class="warning"><strong>Decision-support:</strong> hasil multimodal adalah kombinasi evidence klinis, visual, dan histori. Skor fusion bukan probabilitas penyakit terkalibrasi dan tidak menggantikan pemeriksaan dokter.</div>
+      <div class="warning"><strong>Decision-support:</strong> hasil analisa adalah decision-support. Pilih mode sesuai evidence yang tersedia; skor fusion bukan probabilitas penyakit terkalibrasi dan tidak menggantikan pemeriksaan dokter.</div>
 
-      <div class="workspace-grid">
-        <div class="card clinical-panel">
+      <div class="card mode-card">
+        <div class="mode-copy">
+          <div class="section-label">ANALYSIS MODE</div>
+          <h3 id="modeTitle">Multimodal</h3>
+          <p id="modeDescription">Gabungkan anamnesa/pemeriksaan, foto mata, dan histori kasus untuk membentuk evidence board.</p>
+        </div>
+        <div class="mode-switch" role="tablist" aria-label="Mode analisa">
+          <button type="button" class="mode-btn active" data-mode="multimodal">✦ Multimodal</button>
+          <button type="button" class="mode-btn" data-mode="photo">◉ Foto saja</button>
+          <button type="button" class="mode-btn" data-mode="clinical">▤ Klinis saja</button>
+        </div>
+      </div>
+
+      <div id="analysisWorkspace" class="workspace-grid">
+        <div id="clinicalPanel" class="card clinical-panel">
           <div class="card-head"><div><h3>1 · Clinical Input</h3><p>Data yang diketahui sebelum model melakukan retrieval.</p></div><span class="step-badge">TEXT</span></div>
           <form id="analysisForm">
             <div class="form-grid">
@@ -65,7 +78,7 @@
           </form>
         </div>
 
-        <div class="card image-panel">
+        <div id="imagePanel" class="card image-panel">
           <div class="card-head"><div><h3>2 · Vision Input</h3><p>Gunakan foto sebagai evidence visual tambahan.</p></div><span class="step-badge">IMAGE</span></div>
           <input id="eyeImage" type="file" accept="image/jpeg,image/png,image/webp" hidden>
           <div id="dropZone" class="drop-zone">
@@ -87,8 +100,8 @@
       </div>
 
       <div class="card fusion-card">
-        <div class="card-head"><div><h3>3 · Multimodal Evidence Board</h3><p>Hasil dari beberapa sumber evidence, ditampilkan terpisah agar dapat diaudit.</p></div><span id="fusionState" class="chip">Belum dianalisa</span></div>
-        <div id="fusionEmpty" class="empty-state"><div class="empty-icon">✦</div><strong>Belum ada hasil multimodal</strong><span>Isi data klinis dan upload foto, lalu klik <b>Analisa Multimodal</b>.</span></div>
+        <div class="card-head"><div><h3 id="evidenceBoardTitle">3 · Evidence Board</h3><p id="evidenceBoardDescription">Hasil tiap sumber evidence ditampilkan terpisah agar dapat diaudit.</p></div><span id="fusionState" class="chip">Belum dianalisa</span></div>
+        <div id="fusionEmpty" class="empty-state"><div class="empty-icon">✦</div><strong id="emptyTitle">Belum ada hasil analisa</strong><span id="emptyDescription">Pilih mode, masukkan evidence yang tersedia, lalu jalankan analisa.</span></div>
         <div id="fusionContent" class="hidden">
           <div class="three-col">
             <div class="evidence-card"><div class="section-label">CLINICAL EVIDENCE</div><div id="clinicalEvidence"></div></div>
