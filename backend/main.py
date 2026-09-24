@@ -361,10 +361,13 @@ async def analyze_multimodal(
     riwayat_sekarang: str = Form(default=""),
     periksa: str = Form(default=""),
     top_n: int = Form(default=5),
+    mode: str = Form(default="multimodal"),
     user=Depends(get_current_user),
 ) -> dict[str, Any]:
     if retriever is None:
         raise HTTPException(status_code=503, detail="Index belum tersedia.")
+    if mode not in {"multimodal", "photo"}:
+        raise HTTPException(status_code=400, detail="Mode foto harus multimodal atau photo.")
     if (image.content_type or "").lower() not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Format foto harus JPG/JPEG, PNG, atau WEBP.")
     raw = await image.read()
@@ -443,7 +446,7 @@ async def analyze_multimodal(
         "clinical_analysis": clinical_result,
         "visual_retrieval": visual_result,
         "fused_results": fused,
-        "evidence_completeness": evidence_completeness,
+        "evidence_completeness": {**evidence_completeness, "mode": mode},
         "fusion_policy": {
             "clinical_weight": 0.70,
             "visual_weight": 0.30,
@@ -453,8 +456,8 @@ async def analyze_multimodal(
     }
     case_uid = _save_case(
         user["id"],
-        "multimodal",
-        "Analisa Multimodal",
+        mode,
+        "Analisa Foto" if mode == "photo" else "Analisa Multimodal",
         clinical,
         result_payload,
         image_baseline["sha256"],
