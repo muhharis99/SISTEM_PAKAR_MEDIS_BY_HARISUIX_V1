@@ -530,8 +530,8 @@ def case_report(case_uid: str, user=Depends(get_current_user)) -> HTMLResponse:
             raise HTTPException(status_code=404, detail="Kasus tidak ditemukan.")
     inp = _safe_json(row.input_json)
     res = _safe_json(row.result_json)
-    clinical = res.get("clinical_analysis", {}).get("results", [])
-    fused = res.get("fused_results", [])
+    clinical = (res.get("clinical_analysis") or {}).get("results", []) or res.get("results", [])
+    fused = res.get("fused_results", []) or res.get("results", [])
     vis = (res.get("vision") or {}).get("analysis") or {}
     checklist = res.get("clinical_checklist") or {}
     def esc_html(v: Any) -> str:
