@@ -2,17 +2,31 @@
 set -e
 cd "$(dirname "$0")"
 
-if [ ! -x ".venv/Scripts/python.exe" ]; then
-  echo "[1/4] Membuat virtual environment..."
+PY=".venv/Scripts/python.exe"
+PORT="${PORT:-8000}"
+
+if [ ! -x "$PY" ]; then
+  echo "[1/5] Membuat virtual environment..."
   python -m venv .venv
+else
+  echo "[1/5] Virtual environment siap."
 fi
 
-echo "[2/4] Memasang dependency..."
-.venv/Scripts/python.exe -m pip install --upgrade pip
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+echo "[2/5] Memasang / memverifikasi dependency..."
+"$PY" -m pip install --upgrade pip
+"$PY" -m pip install -r requirements.txt
 
-echo "[3/4] Memastikan index retrieval tersedia..."
-.venv/Scripts/python.exe scripts/build_index.py
+echo "[3/5] Memeriksa retrieval index..."
+if [ -f "data/index/tfidf.joblib" ] && [ -f "data/index/matrix.npz" ] && [ -f "data/index/metadata.json" ]; then
+  echo "Index lokal ditemukan. Build dilewati."
+else
+  echo "Index belum lengkap. Menjalankan build_index.py..."
+  "$PY" scripts/build_index.py
+fi
 
-echo "[4/4] Menjalankan CDSS Mata di http://localhost:8000"
-.venv/Scripts/python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+echo "[4/5] Memeriksa syntax backend + ML..."
+"$PY" -m compileall -q backend ml
+echo "Syntax check OK."
+
+echo "[5/5] Menjalankan CDSS Mata di http://localhost:$PORT"
+"$PY" -m uvicorn backend.main:app --host 0.0.0.0 --port "$PORT"
