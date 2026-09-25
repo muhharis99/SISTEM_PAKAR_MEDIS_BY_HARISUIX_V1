@@ -1,5 +1,11 @@
 # Sistem CDSS Mata — Multimodal Clinical Decision Support
 
+## Dokumentasi instalasi
+
+- **Linux Mint — dari install Ollama sampai web berjalan:** `docs/INSTALL_LINUX_MINT.md`
+- Windows 10 + Git Bash: `START_WINDOWS_GITBASH.md`
+- V3 Case Workspace: `docs/V3_CASE_WORKSPACE.md`
+
 Aplikasi web untuk membantu tenaga medis menganalisis kasus mata dengan menggabungkan:
 
 1. **Clinical retrieval** dari histori rekam medis menggunakan TF-IDF + cosine similarity.
